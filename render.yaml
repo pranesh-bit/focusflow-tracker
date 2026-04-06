@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: focusflow-tracker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DB_CLIENT
+        value: sqlite
+      - key: SQLITE_DB_PATH
+        value: /var/data/focusflow.db
+      - key: TRACKER_SECRET
+        value: secure_key_123
+    disk:
+      name: focusflow-data
+      mountPath: /var/data
+      sizeGB: 1

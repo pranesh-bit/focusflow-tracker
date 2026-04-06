@@ -13,6 +13,7 @@
   "dependencies": {
     "active-win": "^8.2.1",
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
     "express": "^5.2.1",
     "mysql2": "^3.19.1"
   }
