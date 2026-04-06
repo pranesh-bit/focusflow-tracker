@@ -1,49 +1,43 @@
 const activeWin = require('active-win');
 
 // --- CONFIGURATION ---
-const SERVER_URL = 'http://localhost:3000/api/track';
-const SECRET_KEY = 'secure_key_123'; // Must match server.js
-const USER_ID = 1; // The ID of 'Admin User'
-const INTERVAL_MS = 10000; // Check every 10 seconds
+const SERVER_URL = process.env.FOCUSFLOW_SERVER_URL || 'http://localhost:3000/api/track';
+const SECRET_KEY = process.env.TRACKER_SECRET || 'secure_key_123';
+const USER_ID = Number(process.env.FOCUSFLOW_USER_ID || 1);
+const INTERVAL_MS = Number(process.env.FOCUSFLOW_INTERVAL_MS || 10000); // Check every 10 seconds
 
-console.log("🔴 FocusFlow Tracker Started...");
-console.log("Tracking your activity. Press Ctrl+C to stop.");
+console.log("🔴 FocusFlow Tracker Started (Smart Mode)...");
+console.log("Calculating accurate time. Press Ctrl+C to stop.");
+
+// --- STATE VARIABLES ---
+// We need to remember what we were doing previously to calculate time.
+let previousApp = null;
+let previousTitle = null;
+let startTime = Date.now();
 
 // Helper: Decide category based on App Name
 function getCategory(appName) {
     const appLower = appName.toLowerCase();
     
-    // Development
     if (appLower.includes('code') || appLower.includes('visual studio') || appLower.includes('idea')) 
         return 'Development';
     
-    // Browsers
     if (appLower.includes('chrome') || appLower.includes('firefox') || appLower.includes('edge')) 
         return 'Browsing';
     
-    // Communication
     if (appLower.includes('slack') || appLower.includes('discord') || appLower.includes('teams')) 
         return 'Communication';
         
-    // Entertainment
-    if (appLower.includes('spotify') || appLower.includes('netflix') || appLower.includes('youtube')) 
+    if (appLower.includes('spotify') || appLower.includes('netflix')) 
         return 'Entertainment';
 
     return 'Other';
 }
 
-async function track() {
+// Helper: Send data to server
+async function saveLog(app, title, category, duration) {
     try {
-        const window = await activeWin();
-        
-        if (!window) return;
-
-        const app = window.owner.name;
-        const title = window.title;
-        const category = getCategory(app);
-        
-        // Send to Backend
-        const response = await fetch(SERVER_URL, {
+        await fetch(SERVER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -52,17 +46,45 @@ async function track() {
                 app: app,
                 title: title,
                 category: category,
-                duration: Math.round(INTERVAL_MS / 1000) // Seconds passed
+                duration: duration // Sending calculated duration in seconds
             })
         });
-        
-        const data = await response.json();
-        if(data.success) {
-            console.log(`✅ Logged: ${app} (${category})`);
+        console.log(`✅ Saved: ${app} (${Math.round(duration / 60)}m)`);
+    } catch (error) {
+        console.error("❌ Error saving:", error.message);
+    }
+}
+
+async function track() {
+    try {
+        const window = await activeWin();
+        if (!window) return;
+
+        const currentApp = window.owner.name;
+        const currentTitle = window.title;
+
+        // CHECK: Did the user switch apps or windows?
+        // We save data ONLY when switching, not every 10 seconds.
+        if (previousApp !== null && (currentApp !== previousApp || currentTitle !== previousTitle)) {
+            
+            // CALCULATE: How much time passed since we started this task?
+            const endTime = Date.now();
+            const durationMs = endTime - startTime;
+            const durationSeconds = Math.round(durationMs / 1000);
+
+            // SAVE: Send the PREVIOUS task to the database
+            await saveLog(previousApp, previousTitle, getCategory(previousApp), durationSeconds);
+
+            // RESET: Start timing the new task
+            startTime = Date.now();
         }
 
+        // UPDATE: Remember what we are currently looking at
+        previousApp = currentApp;
+        previousTitle = currentTitle;
+
     } catch (error) {
-        console.error("❌ Error sending data:", error.message);
+        console.error("Error tracking:", error.message);
     }
 }
 
